@@ -1,19 +1,20 @@
 import json
 import os
 import tarfile
-from collections import defaultdict
+from collections import namedtuple
 from shutil import (
     copytree,
     rmtree,
 )
 
 
-class _LayerNode(object):
-
-    def __init__(self, id_=None, parent=None, child=None):
-        self.id_ = id_
-        self.parent = parent
-        self.child = child
+ImageItem = namedtuple('ImageItem', (
+    'repo',
+    'tag',
+    'image_id',
+    'ordered_layer_ids',
+    'config',
+))
 
 
 class Spec(object):
@@ -22,6 +23,7 @@ class Spec(object):
 
     LAYER_TAR = 'layer.tar'
     REPOSITORIES = 'repositories'
+    JSON = 'json'
 
     @staticmethod
     def extract_stream(file_obj, image_x_dir):
@@ -41,6 +43,16 @@ class Spec(object):
         }
         return handle
 
+    @staticmethod
+    def image_item(repo, tag, image_id, ordered_layer_ids, config):
+        return ImageItem(
+            repo=repo,
+            tag=tag,
+            image_id=image_id,
+            ordered_layer_ids=ordered_layer_ids,
+            config=config
+        )
+
     @classmethod
     def match(cls, handle):
         image_x_dir = handle['image_x_dir']
@@ -48,42 +60,26 @@ class Spec(object):
         return os.path.isfile(repo_path)
 
     @classmethod
-    def __get_ordered_layer_ids(cls, image_x_dir):
-        root_id = None
-        nodes = defaultdict(_LayerNode)
+    def __get_ordered_layer_ids(cls, image_x_dir, top_layer_id):
+        layer_id = top_layer_id
+        top2bottom = []
 
-        for item in os.listdir(image_x_dir):
-            layer_dir = os.path.join(image_x_dir, item)
+        while layer_id is not None:
+            layer_dir = os.path.join(image_x_dir, layer_id)
             if not os.path.isdir(layer_dir):
-                continue
+                raise ValueError('Layer %s is not found.' % layer_id)
 
-            nodes[item].id_ = item
+            json_path = os.path.join(layer_dir, cls.JSON)
+            try:
+                with open(json_path, 'r') as fd:
+                    json_data = json.load(fd)
+            except (IOError, OSError, ValueError):
+                raise ValueError('Invalid layer %s.' % layer_id)
 
-            json_path = os.path.join(layer_dir, 'json')
-            with open(json_path, 'r') as fd:
-                json_data = json.load(fd)
-            if json_data.get('id') != item:
-                raise ValueError('Invalid layer dir: %s' % item)
+            top2bottom.append(layer_id)
+            layer_id = json_data.get('parent', None)
 
-            parent_id = json_data.get('parent', None)
-            if parent_id is None:
-                root_id = item
-            else:
-                nodes[parent_id].child = nodes[item]
-                nodes[item].parent = nodes[parent_id]
-
-        if root_id is None:
-            raise ValueError('Can not find the root layer.')
-
-        ordered_ids = []
-        layer = nodes[root_id]
-        while layer is not None:
-            ordered_ids.append(layer.id_)
-            layer = layer.child
-
-        if len(ordered_ids) != len(nodes.keys()):
-            raise ValueError('Some expected layer does not exist in these directories.')
-        return ordered_ids
+        return reversed(top2bottom)
 
     @classmethod
     def __load_repositories_info(cls, image_x_dir):
@@ -106,9 +102,15 @@ class Spec(object):
     def load_spec_handle(cls, handle, target_layers_dir):
         image_x_dir = handle['image_x_dir']
         repo_info = cls.__load_repositories_info(image_x_dir)
-        ordered_layer_ids = cls.__get_ordered_layer_ids(image_x_dir)
-        cls._register_layers(image_x_dir, target_layers_dir, ordered_layer_ids)
-        yield repo_info, ordered_layer_ids
+        for repo, tags in repo_info.items():
+            for tag, image_id in tags.items():
+                # image_id =~ top_layer_id in spec v1.0
+                ordered_layer_ids = cls.__get_ordered_layer_ids(image_x_dir, image_id)
+                config_path = os.path.join(image_x_dir, image_id, cls.JSON)
+                with open(config_path, 'r') as fd:
+                    config_data = json.load(fd)
+                cls._register_layers(image_x_dir, target_layers_dir, ordered_layer_ids)
+                yield cls.image_item(repo, tag, image_id, ordered_layer_ids, config_data)
 
     @classmethod
     def _remove_f_node(cls, path):

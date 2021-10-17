@@ -1,7 +1,6 @@
 import json
 import hashlib
 import os
-from collections import defaultdict
 from succubi.docker_image.v1_0 import Spec as _Spec10
 
 
@@ -46,14 +45,11 @@ class Spec(_Spec10):
         ordered_layer_ids = [diff2layer_ids[d_] for d_ in ordered_diff_ids]
         cls._register_layers(image_x_dir, target_layers_dir, ordered_layer_ids)
 
-        repo_info = defaultdict(dict)
         for tag_item in item['RepoTags']:
             colon_n = tag_item.index(':')  # SHALL NOT use split
             repo = tag_item[:colon_n]
             tag = tag_item[colon_n + 1:]
-            repo_info[repo][tag] = image_id
-
-        return repo_info, ordered_layer_ids
+            yield cls.image_item(repo, tag, image_id, ordered_layer_ids, config_data)
 
     @classmethod
     def load_spec_handle(cls, handle, target_layers_dir):
@@ -64,6 +60,7 @@ class Spec(_Spec10):
             mani_data = json.load(fd)
 
         layer2diff_ids = {}  # cache
-        for item in mani_data:
-            yield cls._load_manifest_item(
-                image_x_dir, target_layers_dir, item, layer2diff_ids)
+        for mani_item in mani_data:
+            for image_item in cls._load_manifest_item(
+                    image_x_dir, target_layers_dir, mani_item, layer2diff_ids):
+                yield image_item

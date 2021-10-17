@@ -44,15 +44,14 @@ class Image(object):
             _use_dir(cls.IMAGES_ROOT)
 
             image_items = spec.load_spec_handle(handle, cls.LAYERS_ROOT)
-            for repo_info, ordered_layer_ids in image_items:
-                # the format of repo_info is the same to v1.0's repositories file content.
-                for repo, tags in repo_info.items():
-                    for tag, image_id in tags.items():
-                        image_dir = os.path.join(cls.IMAGES_ROOT, image_id)
-                        _use_dir(image_dir)
-                        if not os.listdir(image_dir):
-                            spec.integrate_layers(
-                                cls.LAYERS_ROOT, ordered_layer_ids, image_dir)
+            for image_item in image_items:
+                image_dir = os.path.join(cls.IMAGES_ROOT, image_item.image_id)
+                _use_dir(image_dir)
+                if not os.listdir(image_dir):
+                    # empty dir means it's a new image
+                    spec.integrate_layers(
+                        cls.LAYERS_ROOT, image_item.ordered_layer_ids, image_dir)
+                # TODO: save image info into local db.
 
     @classmethod
     def list(cls, tag=None):
