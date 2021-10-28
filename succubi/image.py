@@ -2,6 +2,7 @@ import os
 import tempfile
 from six import string_types
 
+from succubi.db import ImageDb
 from succubi.docker_image.v1_0 import Spec as _Spec10
 from succubi.docker_image.v1_x import Spec as _Spec1x
 
@@ -16,10 +17,22 @@ def _use_dir(path):
     os.makedirs(path, 0o755)
 
 
+def _dir_size(path):
+    # TODO
+    raise NotImplementedError()
+
+
 class Image(object):
 
     LAYERS_ROOT = os.path.join(APP_ROOT, 'layers')
     IMAGES_ROOT = os.path.join(APP_ROOT, 'images')
+
+    def __init__(self, image_id, repo, tag, size, timestamp):
+        self._image_id = image_id
+        self._repo = repo
+        self._tag = tag
+        self._size = size
+        self._stamp = timestamp
 
     @classmethod
     def pull(cls, tag):
@@ -51,12 +64,28 @@ class Image(object):
                     # empty dir means it's a new image
                     spec.integrate_layers(
                         cls.LAYERS_ROOT, image_item.ordered_layer_ids, image_dir)
-                # TODO: save image info into local db.
+
+                img_db = ImageDb()
+                img_db.add(
+                    image_id=image_item.image_id, repo=image_item.repo,
+                    tag=image_item.tag, size=_dir_size(image_dir))
+
+                # TODO: save json-config info
 
     @classmethod
-    def list(cls, tag=None):
-        raise NotImplementedError()
+    def list(cls, repo_tag=None):
+        img_db = ImageDb()
+        for image_id, repo, tag, size, stamp in img_db.list(repo_tag):
+            yield cls(image_id, repo, tag, size, stamp)
 
     @classmethod
-    def get(cls, id_or_tag):
-        raise NotImplementedError()
+    def get(cls, id_or_repo_tag):
+        img_db = ImageDb()
+        raw = img_db.get_by_id(id_or_repo_tag)
+        if raw is None:
+            raw = img_db.get_by_repo_tag(id_or_repo_tag)
+
+        if raw is None:
+            return raw
+
+        return cls(*raw)
