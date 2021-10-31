@@ -7,7 +7,7 @@ from succubi.docker_image.v1_0 import Spec as _Spec10
 from succubi.docker_image.v1_x import Spec as _Spec1x
 
 
-HOME = os.path.realpath('~')
+HOME = os.environ['HOME']
 APP_ROOT = os.path.join(HOME, '.succubi')
 
 
@@ -28,11 +28,18 @@ class Image(object):
     IMAGES_ROOT = os.path.join(APP_ROOT, 'images')
 
     def __init__(self, image_id, repo, tag, size, timestamp):
-        self._image_id = image_id
+        self._id = image_id
         self._repo = repo
         self._tag = tag
         self._size = size
         self._stamp = timestamp
+
+    @property
+    def id(self):
+        return self._id
+
+    def get_image_content_dir(self):
+        return os.path.join(self.IMAGES_ROOT, self._id)
 
     @classmethod
     def pull(cls, tag):
@@ -89,3 +96,7 @@ class Image(object):
             return raw
 
         return cls(*raw)
+
+    @classmethod
+    def delete(cls, id_or_repo_tag):
+        pass
