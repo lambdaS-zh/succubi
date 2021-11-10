@@ -30,6 +30,7 @@ class Container(object):
 
     def __init__(self, container_id, container_name, image,
                  detach=False, interactive=False, tty=False,
+                 working_dir=None,
                  environs=(), bind_mounts=(), volumes=(),
                  entrypoint=(), cmd=()):
         self._id = container_id
@@ -38,6 +39,7 @@ class Container(object):
         self._detach = detach
         self._interactive = interactive
         self._tty = tty
+        self._working_dir = working_dir
         self._environs = environs
         self._bind_mounts = bind_mounts
         self._volumes = volumes
@@ -83,6 +85,7 @@ class Container(object):
             'detach':       self._detach,
             'interactive':  self._interactive,
             'tty':          self._tty,
+            'working_dir':  self._working_dir,
             'environs':     self._environs,
             'bind_mounts':  self._bind_mounts,
             'volumes':      self._volumes,
@@ -96,7 +99,7 @@ class Container(object):
         with open(file_path, 'w') as fd:
             fd.write(content)
 
-        check_call([sys.argv[0], '-m', 'succubi.process_shim', file_path])
+        check_call([sys.executable, '-m', 'succubi.process_shim', file_path])
 
     def stop(self):
         pass
