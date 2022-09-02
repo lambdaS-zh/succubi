@@ -9,6 +9,10 @@ from subprocess import check_call
 from tempfile import gettempdir
 from uuid import uuid4
 
+from succubi import exceptions
+from succubi.db import ContainerDb
+from succubi.lock import Lock
+
 
 HOME = os.environ['HOME']
 APP_ROOT = os.path.join(HOME, '.succubi')
@@ -46,12 +50,17 @@ class Container(object):
         self._entrypoint = entrypoint
         self._cmd = cmd
 
+    @classmethod
+    def _update_config(cls, image_config):
+        raise NotImplementedError()
+
     @property
     def root_dir(self):
         return os.path.join(self.CONTAINERS_ROOT, self._id)
 
     @classmethod
     def create(cls, **kwargs):
+        # TODO: check if name is in use.
         new_con_id = _gen_con_id()
         container_dir = os.path.join(cls.CONTAINERS_ROOT, new_con_id)
         _use_dir(container_dir)
@@ -59,7 +68,9 @@ class Container(object):
             image = kwargs['image']
             image_dir = image.get_image_content_dir()
             copytree(image_dir, container_dir)
-            # TODO: save db info and json info
+            config = cls._update_config(image.get_config())
+            con_db = ContainerDb()
+            con_db.add(new_con_id, kwargs['name'], config)
             return cls(new_con_id, **kwargs)
         except (OSError, IOError):
             rmtree(container_dir, ignore_errors=True)
@@ -75,8 +86,6 @@ class Container(object):
         pass
 
     def start(self):
-        # TODO: check if it is already running and set user lock.
-        # TODO: check if name is in use.
         spec = {
             'root_dir':     self.root_dir,
             'id':           self._id,
@@ -93,13 +102,20 @@ class Container(object):
             'cmd':          self._cmd,
         }
 
-        file_path = os.path.join(gettempdir(), '.succubi.%s.shim_spec' % self._id)
-        content = json.dumps(spec)
+        running_lock = Lock('run.%s' % self._id)
+        if not running_lock.acquire(excluding=True, blocking=False):
+            raise exceptions.ContainerAlreadyRunning(self._id)
 
-        with open(file_path, 'w') as fd:
-            fd.write(content)
+        try:
+            file_path = os.path.join(gettempdir(), '.succubi.%s.shim_spec' % self._id)
+            content = json.dumps(spec)
 
-        check_call([sys.executable, '-m', 'succubi.process_shim', file_path])
+            with open(file_path, 'w') as fd:
+                fd.write(content)
+
+            check_call([sys.executable, '-m', 'succubi.process_shim', file_path])
+        finally:
+            running_lock.release()
 
     def stop(self):
         pass

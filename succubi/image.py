@@ -41,6 +41,10 @@ class Image(object):
     def get_image_content_dir(self):
         return os.path.join(self.IMAGES_ROOT, self._id)
 
+    def get_config(self):
+        # TODO
+        raise NotImplementedError()
+
     @classmethod
     def pull(cls, tag):
         raise NotImplementedError()
@@ -75,9 +79,7 @@ class Image(object):
                 img_db = ImageDb()
                 img_db.add(
                     image_id=image_item.image_id, repo=image_item.repo,
-                    tag=image_item.tag, size=_dir_size(image_dir))
-
-                # TODO: save json-config info
+                    tag=image_item.tag, size=_dir_size(image_dir), config=image_item)
 
     @classmethod
     def list(cls, repo_tag=None):
